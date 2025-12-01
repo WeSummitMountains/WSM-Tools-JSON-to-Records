@@ -135,7 +135,9 @@ public with sharing class JsonToRecordsService {
             ProcessingResult result = results.get(inp.headerId);
 
             try {
-                Object parsed = JSON.deserializeUntyped(inp.jsonPayload);
+                // Sanitize JSON to remove markdown code fences from LLM responses
+                String cleanJson = sanitizeJsonPayload(inp.jsonPayload);
+                Object parsed = JSON.deserializeUntyped(cleanJson);
 
                 if (!(parsed instanceof Map<String, Object>)) {
                     result.addError('JSON payload must be an object with "header" and/or "children" keys');
@@ -507,5 +509,52 @@ public with sharing class JsonToRecordsService {
         }
 
         return base;
+    }
+
+    /**
+     * @description Sanitize JSON payload from LLM responses.
+     *              Removes markdown code fences that AI models often wrap around JSON.
+     *              Handles patterns like: ```json {...} ``` or ``` {...} ```
+     * @param rawPayload The raw JSON string potentially wrapped in markdown
+     * @return String The cleaned JSON string ready for parsing
+     */
+    private String sanitizeJsonPayload(String rawPayload) {
+        if (String.isBlank(rawPayload)) {
+            return rawPayload;
+        }
+
+        String sanitized = rawPayload.trim();
+
+        // Pattern 1: ```json ... ``` or ```JSON ... ```
+        // Pattern 2: ``` ... ```
+        // We need to handle both opening and closing fences
+
+        // Check if starts with ``` (with or without language identifier)
+        if (sanitized.startsWith('```')) {
+            // Find the end of the opening fence line
+            Integer firstNewline = sanitized.indexOf('\n');
+            if (firstNewline > 0) {
+                // Remove the opening fence line (```json or ```)
+                sanitized = sanitized.substring(firstNewline + 1);
+            } else {
+                // No newline found, just remove the backticks
+                sanitized = sanitized.substring(3);
+            }
+        }
+
+        // Check if ends with ```
+        if (sanitized.endsWith('```')) {
+            sanitized = sanitized.substring(0, sanitized.length() - 3);
+        }
+
+        // Also handle case where there might be trailing whitespace after ```
+        sanitized = sanitized.trim();
+
+        // Handle edge case: ``` on its own line at the end
+        if (sanitized.endsWith('\n```')) {
+            sanitized = sanitized.substring(0, sanitized.length() - 4);
+        }
+
+        return sanitized.trim();
     }
 }

@@ -305,6 +305,58 @@ private class JsonToRecordsServiceTest {
     }
 
     @IsTest
+    static void testMarkdownCodeFenceJsonPayload() {
+        // Test: JSON wrapped in markdown code fences (common from LLM responses)
+        Account acc = [SELECT Id FROM Account LIMIT 1];
+
+        // Simulate LLM response with ```json ... ``` wrapper
+        String llmResponse = '```json\n{"header": {"BillingCity": "LLM City"}}\n```';
+
+        JsonToRecordsAction.Input input = new JsonToRecordsAction.Input();
+        input.headerId = acc.Id;
+        input.sObjectTypeName = 'Account';
+        input.jsonPayload = llmResponse;
+
+        JsonToRecordsService service = new JsonToRecordsService();
+
+        Test.startTest();
+        Map<Id, JsonToRecordsService.ProcessingResult> results =
+            service.processRecords(new List<JsonToRecordsAction.Input>{ input });
+        Test.stopTest();
+
+        JsonToRecordsService.ProcessingResult result = results.get(acc.Id);
+        System.assertEquals(true, result.success, 'Should succeed after stripping markdown fences');
+        System.assertEquals(true, result.headerUpdated, 'Header should be updated');
+
+        Account updated = [SELECT BillingCity FROM Account WHERE Id = :acc.Id];
+        System.assertEquals('LLM City', updated.BillingCity, 'BillingCity should be updated');
+    }
+
+    @IsTest
+    static void testMarkdownCodeFenceWithoutLanguage() {
+        // Test: JSON wrapped in plain ``` ... ``` (no language identifier)
+        Account acc = [SELECT Id FROM Account LIMIT 1];
+
+        String llmResponse = '```\n{"header": {"BillingCity": "Plain Fence City"}}\n```';
+
+        JsonToRecordsAction.Input input = new JsonToRecordsAction.Input();
+        input.headerId = acc.Id;
+        input.sObjectTypeName = 'Account';
+        input.jsonPayload = llmResponse;
+
+        JsonToRecordsService service = new JsonToRecordsService();
+
+        Test.startTest();
+        Map<Id, JsonToRecordsService.ProcessingResult> results =
+            service.processRecords(new List<JsonToRecordsAction.Input>{ input });
+        Test.stopTest();
+
+        JsonToRecordsService.ProcessingResult result = results.get(acc.Id);
+        System.assertEquals(true, result.success, 'Should succeed with plain code fences');
+        System.assertEquals(true, result.headerUpdated, 'Header should be updated');
+    }
+
+    @IsTest
     static void testEmptyChildrenArray() {
         Account acc = [SELECT Id FROM Account LIMIT 1];
 
